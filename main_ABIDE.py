@@ -29,7 +29,6 @@ import scipy.io as sio
 import ABIDEParser as Reader
 import train_GCN as Train
 
-
 # Prepares the training/test data for each cross validation fold and trains the GCN
 def train_fold(train_ind, test_ind, val_ind, graph_feat, features, y, y_data, params, subject_IDs):
     """
@@ -163,7 +162,7 @@ def main():
     # Initialise variables for class labels and acquisition sites
     y_data = np.zeros([num_nodes, num_classes])
     y = np.zeros([num_nodes, 1])
-    site = np.zeros([num_nodes, 1], dtype=np.int)
+    site = np.zeros([num_nodes, 1], dtype=int)
 
     # Get class labels and acquisition site for all subjects
     for i in range(num_nodes):
@@ -218,7 +217,7 @@ def main():
 
     if args.save == 1:
         result_name = 'ABIDE_classification.mat'
-        sio.savemat('/vol/medic02/users/sparisot/python/graphCNN/results/' + result_name + '.mat',
+        sio.savemat('results/' + result_name + '.mat',
                     {'lin': scores_lin, 'lin_auc': scores_auc_lin,
                      'acc': scores_acc, 'auc': scores_auc, 'folds': fold_size})
 

@@ -27,6 +27,7 @@ from gcn.utils import *
 from gcn.models import MLP, Deep_GCN
 import sklearn.metrics
 
+tf.compat.v1.disable_eager_execution()
 
 def get_train_test_masks(labels, idx_train, idx_val, idx_test):
     train_mask = sample_mask(idx_train, labels.shape[0])
@@ -49,10 +50,10 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test,
     # Set random seed
     random.seed(params['seed'])
     np.random.seed(params['seed'])
-    tf.set_random_seed(params['seed'])
+    tf.compat.v1.set_random_seed(params['seed'])
 
     # Settings
-    flags = tf.app.flags
+    flags = tf.compat.v1.app.flags
     FLAGS = flags.FLAGS
     flags.DEFINE_string('model', params['model'], 'Model string.')  # 'gcn', 'gcn_cheby', 'dense'
     flags.DEFINE_float('learning_rate', params['lrate'], 'Initial learning rate.')
@@ -86,20 +87,20 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test,
     
     # Define placeholders
     placeholders = {
-        'support': [tf.sparse_placeholder(tf.float32) for _ in range(num_supports)],
-        'features': tf.sparse_placeholder(tf.float32, shape=tf.constant(features[2], dtype=tf.int64)),
-        'phase_train': tf.placeholder_with_default(False, shape=()),
-        'labels': tf.placeholder(tf.float32, shape=(None, y_train.shape[1])),
-        'labels_mask': tf.placeholder(tf.int32),
-        'dropout': tf.placeholder_with_default(0., shape=()),
-        'num_features_nonzero': tf.placeholder(tf.int32)  # helper variable for sparse dropout
+        'support': [tf.compat.v1.sparse_placeholder(tf.float32) for _ in range(num_supports)],
+        'features': tf.compat.v1.sparse_placeholder(tf.float32, shape=tf.constant(features[2], dtype=tf.int64)),
+        'phase_train': tf.compat.v1.placeholder_with_default(False, shape=()),
+        'labels': tf.compat.v1.placeholder(tf.float32, shape=(None, y_train.shape[1])),
+        'labels_mask': tf.compat.v1.placeholder(tf.int32),
+        'dropout': tf.compat.v1.placeholder_with_default(0., shape=()),
+        'num_features_nonzero': tf.compat.v1.placeholder(tf.int32)  # helper variable for sparse dropout
     }
     
     # Create model
     model = model_func(placeholders, input_dim=features[2][1], depth=FLAGS.depth, logging=True)
     
     # Initialize session
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
 
     # Define model evaluation function
     def evaluate(feats, graph, label, mask, placeholder):
@@ -117,7 +118,7 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test,
         return outs_val[0], outs_val[1], auc,  (time.time() - t_test)
     
     # Init variables
-    sess.run(tf.global_variables_initializer())
+    sess.run(tf.compat.v1.global_variables_initializer())
     
     cost_val = []
     
@@ -153,7 +154,7 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test,
     print("Optimization Finished!")
     
     # Testing
-    sess.run(tf.local_variables_initializer())
+    sess.run(tf.compat.v1.local_variables_initializer())
     test_cost, test_acc, test_auc, test_duration = evaluate(features, support, y_test, test_mask, placeholders)
     print("Test set results:", "cost=", "{:.5f}".format(test_cost),
           "accuracy=", "{:.5f}".format(test_acc),
