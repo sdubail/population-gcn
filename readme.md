@@ -21,7 +21,7 @@ We also provide the list of scans from the [ADNI dataset](adni.loni.usc.edu/) us
 #### INSTALLATION
 
 To run the programme, you will need to install the implementation of graph convolutional networks (GCN) by Kipf et al.
-This project is only compatible with our [forked GCN project](https://github.com/parisots/gcn).  
+This project is only compatible with our [forked GCN project](https://github.com/sdubail/gcn).  
 
 The root folder in fetch_data.py (line 12) and ABIDEParser.py (line 17) has to be updated to the folder were the data will be stored. 
 
