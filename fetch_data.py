@@ -13,28 +13,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from nilearn import datasets
-
-import ABIDEParser as Reader
 import os
 import shutil
 
+import ABIDEParser as Reader
+from nilearn import datasets
+
 # Selected pipeline
-pipeline = 'cpac'
+pipeline = "cpac"
 
 # Input data variables
 num_subjects = 871  # Number of subjects
-root_folder = 'data'
-data_folder = os.path.join(root_folder, 'ABIDE_pcp/cpac/filt_noglobal')
+root_folder = "data"
+data_folder = os.path.join(root_folder, "ABIDE_pcp/cpac/filt_noglobal")
 
 # Files to fetch
-files = ['rois_ho']
+files = ["rois_ho"]
 
-filemapping = {'func_preproc': 'func_preproc.nii.gz',
-               'rois_ho': 'rois_ho.1D'}
+filemapping = {"func_preproc": "func_preproc.nii.gz", "rois_ho": "rois_ho.1D"}
 
-if not os.path.exists(data_folder): os.makedirs(data_folder)
-shutil.copyfile('./subject_IDs.txt', os.path.join(data_folder, 'subject_IDs.txt'))
+if not os.path.exists(data_folder):
+    os.makedirs(data_folder)
+shutil.copyfile("./subject_IDs.txt", os.path.join(data_folder, "subject_IDs.txt"))
 
 # # Download database files
 # abide = datasets.fetch_abide_pcp(data_dir=root_folder, n_subjects=num_subjects, pipeline=pipeline,
@@ -56,10 +56,12 @@ for s, fname in zip(subject_IDs, Reader.fetch_filenames(subject_IDs, files[0])):
     # Move each subject file to the subject folder
     for fl in files:
         if not os.path.exists(os.path.join(subject_folder, base + filemapping[fl])):
-            shutil.move(os.path.join(data_folder, base + filemapping[fl]), subject_folder)
+            shutil.move(
+                os.path.join(data_folder, base + filemapping[fl]), subject_folder
+            )
 
-time_series = Reader.get_timeseries(subject_IDs, 'ho')
+time_series = Reader.get_timeseries(subject_IDs, "ho")
 
 # Compute and save connectivity matrices
 for i in range(len(subject_IDs)):
-        Reader.subject_connectivity(time_series[i], subject_IDs[i], 'ho', 'correlation')
+    Reader.subject_connectivity(time_series[i], subject_IDs[i], "ho", "correlation")

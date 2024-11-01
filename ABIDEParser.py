@@ -14,29 +14,27 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-import os
 import csv
+import os
+
 import numpy as np
 import scipy.io as sio
-
-from sklearn.linear_model import RidgeClassifier
-from sklearn.feature_selection import RFE
 from nilearn import connectome
-
+from sklearn.feature_selection import RFE
+from sklearn.linear_model import RidgeClassifier
 
 # Reading and computing the input data
 
 # Selected pipeline
-pipeline = 'cpac'
+pipeline = "cpac"
 
 # Input data variables
-root_folder = 'data'
-data_folder = os.path.join(root_folder, 'ABIDE_pcp/cpac/filt_noglobal')
-phenotype = os.path.join(root_folder, 'ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv')
+root_folder = "data"
+data_folder = os.path.join(root_folder, "ABIDE_pcp/cpac/filt_noglobal")
+phenotype = os.path.join(root_folder, "ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv")
 
 
 def fetch_filenames(subject_IDs, file_type):
-
     """
         subject_list : list of short subject IDs in string format
         file_type    : must be one of the available file types
@@ -49,8 +47,7 @@ def fetch_filenames(subject_IDs, file_type):
     import glob
 
     # Specify file mappings for the possible file types
-    filemapping = {'func_preproc': '_func_preproc.nii.gz',
-                   'rois_ho': '_rois_ho.1D'}
+    filemapping = {"func_preproc": "_func_preproc.nii.gz", "rois_ho": "_rois_ho.1D"}
 
     # The list to be filled
     filenames = []
@@ -60,10 +57,12 @@ def fetch_filenames(subject_IDs, file_type):
     for i in range(len(subject_IDs)):
         os.chdir(data_folder)  # os.path.join(data_folder, subject_IDs[i]))
         try:
-            filenames.append(glob.glob('*' + subject_IDs[i] + filemapping[file_type])[0])
+            filenames.append(
+                glob.glob("*" + subject_IDs[i] + filemapping[file_type])[0]
+            )
         except IndexError:
             # Return N/A if subject ID is not found
-            filenames.append('N/A')
+            filenames.append("N/A")
         os.chdir(original_path)
     return filenames
 
@@ -81,16 +80,22 @@ def get_timeseries(subject_list, atlas_name):
     timeseries = []
     for i in range(len(subject_list)):
         subject_folder = os.path.join(data_folder, subject_list[i])
-        ro_file = [f for f in os.listdir(subject_folder) if f.endswith('_rois_' + atlas_name + '.1D')]
+        ro_file = [
+            f
+            for f in os.listdir(subject_folder)
+            if f.endswith("_rois_" + atlas_name + ".1D")
+        ]
         fl = os.path.join(subject_folder, ro_file[0])
-        print("Reading timeseries file %s" %fl)
+        print("Reading timeseries file %s" % fl)
         timeseries.append(np.loadtxt(fl, skiprows=0))
 
     return timeseries
 
 
 # Compute connectivity matrices
-def subject_connectivity(timeseries, subject, atlas_name, kind, save=True, save_path=data_folder):
+def subject_connectivity(
+    timeseries, subject, atlas_name, kind, save=True, save_path=data_folder
+):
     """
         timeseries   : timeseries table for subject (timepoints x regions)
         subject      : the subject ID
@@ -105,14 +110,17 @@ def subject_connectivity(timeseries, subject, atlas_name, kind, save=True, save_
 
     print("Estimating %s matrix for subject %s" % (kind, subject))
 
-    if kind in ['tangent', 'partial correlation', 'correlation']:
+    if kind in ["tangent", "partial correlation", "correlation"]:
         conn_measure = connectome.ConnectivityMeasure(kind=kind)
         connectivity = conn_measure.fit_transform([timeseries])[0]
 
     if save:
-        subject_file = os.path.join(save_path, subject,
-                                    subject + '_' + atlas_name + '_' + kind.replace(' ', '_') + '.mat')
-        sio.savemat(subject_file, {'connectivity': connectivity})
+        subject_file = os.path.join(
+            save_path,
+            subject,
+            subject + "_" + atlas_name + "_" + kind.replace(" ", "_") + ".mat",
+        )
+        sio.savemat(subject_file, {"connectivity": connectivity})
 
     return connectivity
 
@@ -125,7 +133,7 @@ def get_ids(num_subjects=None):
         subject_IDs    : list of all subject IDs
     """
 
-    subject_IDs = np.genfromtxt(os.path.join(data_folder, 'subject_IDs.txt'), dtype=str)
+    subject_IDs = np.genfromtxt(os.path.join(data_folder, "subject_IDs.txt"), dtype=str)
 
     if num_subjects is not None:
         subject_IDs = subject_IDs[:num_subjects]
@@ -140,8 +148,8 @@ def get_subject_score(subject_list, score):
     with open(phenotype) as csv_file:
         reader = csv.DictReader(csv_file)
         for row in reader:
-            if row['SUB_ID'] in subject_list:
-                scores_dict[row['SUB_ID']] = row[score]
+            if row["SUB_ID"] in subject_list:
+                scores_dict[row["SUB_ID"]] = row[score]
 
     return scores_dict
 
@@ -184,9 +192,11 @@ def site_percentage(train_ind, perc, subject_list):
     """
 
     train_list = subject_list[train_ind]
-    sites = get_subject_score(train_list, score='SITE_ID')
+    sites = get_subject_score(train_list, score="SITE_ID")
     unique = np.unique(list(sites.values())).tolist()
-    site = np.array([unique.index(sites[train_list[x]]) for x in range(len(train_list))])
+    site = np.array(
+        [unique.index(sites[train_list[x]]) for x in range(len(train_list))]
+    )
 
     labeled_indices = []
 
@@ -201,7 +211,7 @@ def site_percentage(train_ind, perc, subject_list):
 
 
 # Load precomputed fMRI connectivity networks
-def get_networks(subject_list, kind, atlas_name="aal", variable='connectivity'):
+def get_networks(subject_list, kind, atlas_name="aal", variable="connectivity"):
     """
         subject_list : list of subject IDs
         kind         : the kind of connectivity to be used, e.g. lasso, partial correlation, correlation
@@ -215,8 +225,9 @@ def get_networks(subject_list, kind, atlas_name="aal", variable='connectivity'):
 
     all_networks = []
     for subject in subject_list:
-        fl = os.path.join(data_folder, subject,
-                          subject + "_" + atlas_name + "_" + kind + ".mat")
+        fl = os.path.join(
+            data_folder, subject, subject + "_" + atlas_name + "_" + kind + ".mat"
+        )
         matrix = sio.loadmat(fl)[variable]
         all_networks.append(matrix)
     # all_networks=np.array(all_networks)
@@ -246,11 +257,14 @@ def create_affinity_graph_from_scores(scores, subject_list):
         label_dict = get_subject_score(subject_list, l)
 
         # quantitative phenotypic scores
-        if l in ['AGE_AT_SCAN', 'FIQ']:
+        if l in ["AGE_AT_SCAN", "FIQ"]:
             for k in range(num_nodes):
                 for j in range(k + 1, num_nodes):
                     try:
-                        val = abs(float(label_dict[subject_list[k]]) - float(label_dict[subject_list[j]]))
+                        val = abs(
+                            float(label_dict[subject_list[k]])
+                            - float(label_dict[subject_list[j]])
+                        )
                         if val < 2:
                             graph[k, j] += 1
                             graph[j, k] += 1
