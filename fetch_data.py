@@ -36,9 +36,15 @@ if not os.path.exists(data_folder):
     os.makedirs(data_folder)
 shutil.copyfile("./subject_IDs.txt", os.path.join(data_folder, "subject_IDs.txt"))
 
-# # Download database files
-# abide = datasets.fetch_abide_pcp(data_dir=root_folder, n_subjects=num_subjects, pipeline=pipeline,
-#                                  band_pass_filtering=True, global_signal_regression=False, derivatives=files)
+# Download database files
+abide = datasets.fetch_abide_pcp(
+    data_dir=root_folder,
+    n_subjects=num_subjects,
+    pipeline=pipeline,
+    band_pass_filtering=True,
+    global_signal_regression=False,
+    derivatives=files,
+)
 
 
 subject_IDs = Reader.get_ids(num_subjects)

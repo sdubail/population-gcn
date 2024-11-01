@@ -177,7 +177,7 @@ def main():
     )
     parser.add_argument(
         "--folds",
-        default=0,
+        default=11,
         type=int,
         help="For cross validation, specifies which fold will be "
         "used. All folds are used if set to 11 (default: 11)",
