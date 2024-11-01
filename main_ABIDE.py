@@ -82,7 +82,7 @@ def train_fold(
     lin_auc = sklearn.metrics.roc_auc_score(y[test_ind] - 1, pred)
 
     print("Linear Accuracy: " + str(lin_acc))
-
+    # print("Y_LABEL BEFORE EVERYTHIN", np.unique(y_data, axis=0))
     # Classification with GCNs
     test_acc, test_auc = Train.run_training(
         final_graph,

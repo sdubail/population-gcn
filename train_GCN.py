@@ -129,17 +129,25 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
     def evaluate(feats, graph, label, mask, placeholder):
         t_test = time.time()
         feed_dict_val = construct_feed_dict(feats, graph, label, mask, placeholder)
-        feed_dict_val.update({placeholder["phase_train"].name: False})
-        outs_val = sess.run(
-            [model.loss, model.accuracy, model.predict()], feed_dict=feed_dict_val
+        feed_dict_val.update(
+            {placeholder["dropout"]: 0.0, placeholder["phase_train"]: False}
         )
 
-        # Compute the area under curve
+        # Get all activations
+        outputs_to_check = [
+            model.loss,
+            model.accuracy,
+            model.predict(),
+        ]
+
+        outs_val = sess.run(outputs_to_check, feed_dict=feed_dict_val)
+
         pred = outs_val[2]
         pred = pred[np.squeeze(np.argwhere(mask == 1)), :]
         lab = label
         lab = lab[np.squeeze(np.argwhere(mask == 1)), :]
         auc = sklearn.metrics.roc_auc_score(np.squeeze(lab), np.squeeze(pred))
+
         return outs_val[0], outs_val[1], auc, (time.time() - t_test)
 
     # Init variables
@@ -159,11 +167,12 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
         )
 
         # Training step
-        outs = sess.run(
-            [model.opt_op, model.loss, model.accuracy, model.predict()],
-            feed_dict=feed_dict,
-        )
+        outputs_to_check = [model.opt_op, model.loss, model.accuracy, model.predict()]
+
+        outs = sess.run(outputs_to_check, feed_dict=feed_dict)
+
         pred = outs[3]
+
         pred = pred[np.squeeze(np.argwhere(train_mask == 1)), :]
         labs = y_train
         labs = labs[np.squeeze(np.argwhere(train_mask == 1)), :]
