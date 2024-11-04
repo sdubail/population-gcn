@@ -163,6 +163,12 @@ def main():
         "Total number of hidden layers: 1+depth (default: 0)",
     )
     parser.add_argument(
+        "--max_degree",
+        default=3,
+        type=int,
+        help="Maximal degree of the Chebychev polynom used to approximate the filter.",
+    )
+    parser.add_argument(
         "--model",
         default="gcn_cheby",
         help="gcn model used (default: gcn_cheby, "
@@ -212,7 +218,7 @@ def main():
     params["early_stopping"] = params[
         "epochs"
     ]  # Tolerance for early stopping (# of epochs). No early stopping if set to param.epochs
-    params["max_degree"] = 3  # Maximum Chebyshev polynomial degree.
+    params["max_degree"] = args.max_degree  # Maximum Chebyshev polynomial degree.
     params["depth"] = (
         args.depth
     )  # number of additional hidden layers in the GCN. Total number of hidden layers: 1+depth
@@ -310,7 +316,9 @@ def main():
         print("overall AUC %f" + str(np.mean(scores_auc)))
 
     if args.save == 1:
-        result_name = "ABIDE_classification.mat"
+        result_name = (
+            f"ABIDE_classification_{args.model}_{args.depth}_{args.max_degree}"
+        )
         sio.savemat(
             "results/" + result_name + ".mat",
             {
