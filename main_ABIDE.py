@@ -183,7 +183,7 @@ def main():
     )
     parser.add_argument(
         "--folds",
-        default=11,
+        default=0,
         type=int,
         help="For cross validation, specifies which fold will be "
         "used. All folds are used if set to 11 (default: 11)",
@@ -202,6 +202,12 @@ def main():
         "construction (default: correlation, "
         "options: correlation, partial correlation, "
         "tangent)",
+    )
+    parser.add_argument(
+        "--spectral_analysis",
+        default=False,
+        type=bool,
+        help="Compute spectral analysis or not. Default False",
     )
 
     args = parser.parse_args()
@@ -231,6 +237,7 @@ def main():
     params["num_training"] = (
         args.num_training
     )  # percentage of training set used for training
+    params["spectral_analysis"] = args.spectral_analysis
     atlas = args.atlas  # atlas for network construction (node definition)
     connectivity = (
         args.connectivity

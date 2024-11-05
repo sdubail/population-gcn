@@ -20,9 +20,11 @@ from __future__ import division, print_function
 import random
 import time
 
+import matplotlib.pyplot as plt
 import numpy as np
 import sklearn.metrics
 import tensorflow as tf
+from spectral_analysis import extract_chebyshev_coeffs, plot_chebyshev_filters
 
 from gcn.models import MLP, Deep_GCN
 from gcn.utils import *
@@ -77,6 +79,11 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
         "max_degree", params["max_degree"], "Maximum Chebyshev polynomial degree."
     )
     flags.DEFINE_integer("depth", params["depth"], "Depth of Deep GCN")
+    flags.DEFINE_bool(
+        "spectral_analysis",
+        params["spectral_analysis"],
+        "Perform filters spectral analysis or not.",
+    )
 
     # Create test, val and train masked variables
     y_train, y_val, y_test, train_mask, val_mask, test_mask = get_train_test_masks(
@@ -226,5 +233,14 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
         "auc=",
         "{:.5f}".format(test_auc),
     )
+
+    if FLAGS.spectral_analysis:
+        learned_coeffs = extract_chebyshev_coeffs(sess, model)
+        plot_chebyshev_filters(
+            adj,
+            k=FLAGS.max_degree,
+            plot_file=f"learned_filters_{FLAGS.model}_{FLAGS.depth}_{FLAGS.max_degree}.png",
+            learned_coeffs=learned_coeffs,
+        )
 
     return test_acc, test_auc
