@@ -31,34 +31,41 @@ def plot_chebyshev_filters(adj, k, plot_file, learned_coeffs=None, num_points=10
     eigenvals, _ = eigsh(laplacian, k=min(100, adj.shape[0] - 1), which="LM")
     lambda_max = max(eigenvals)
 
-    # Create x-axis points (spectrum)
-    x = np.linspace(0, lambda_max, num_points)
+    # Scale eigenvalues to [-1, 1] as done in chebyshev_polynomials()
+    scaled_eigenvals = (2.0 * eigenvals / lambda_max) - 1
 
-    # Calculate scaled x values as in chebyshev_polynomials()
-    x_scaled = (2.0 * x / lambda_max) - 1
+    # Create x-axis points in [-1, 1]
+    x = np.linspace(-1, 1, num_points)
 
     # Evaluate Chebyshev polynomials for each x
     T = np.zeros((k + 1, num_points))
     T[0] = np.ones(num_points)  # T_0(x) = 1
     if k > 0:
-        T[1] = x_scaled  # T_1(x) = x
+        T[1] = x  # T_1(x) = x
         for n in range(2, k + 1):
-            T[n] = 2 * x_scaled * T[n - 1] - T[n - 2]
+            T[n] = 2 * x * T[n - 1] - T[n - 2]
 
     # Create figure with two subplots
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), height_ratios=[1, 1])
     colors = ["blue", "orange", "green", "red", "purple", "brown", "pink"]
 
-    # Plot 1: Base polynomials
-    for eval in eigenvals:
+    # plotting eigenvalues
+    for eval in scaled_eigenvals:
         ax1.axvline(x=eval, color="gray", alpha=0.2)
-        ax2.axvline(x=eval, color="gray", alpha=0.2)
+
+    # Plot 1: Base polynomials
 
     for i in range(k + 1):
-        ax1.plot(x, T[i], label=f"T_{i}(x)", color=colors[i % len(colors)], linewidth=2)
+        ax1.plot(
+            x,
+            T[i],
+            label=f"T_{i}(x)",
+            color=colors[i % len(colors)],
+            linewidth=2,
+        )
 
     ax1.set_xlabel("λ")
-    ax1.set_ylabel("T_k(λ)")
+    ax1.set_ylabel("|T_k(λ)|")
     ax1.set_title("Chebyshev Polynomial Basis")
     ax1.legend()
     ax1.grid(True, alpha=0.3)
@@ -69,7 +76,7 @@ def plot_chebyshev_filters(adj, k, plot_file, learned_coeffs=None, num_points=10
         out_features = learned_coeffs[0].shape[1]
 
         # Plot eigenvalues
-        for eval in eigenvals:
+        for eval in scaled_eigenvals:
             ax2.axvline(x=eval, color="gray", alpha=0.2)
 
         # Generate colors for filters
