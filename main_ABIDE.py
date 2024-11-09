@@ -163,6 +163,12 @@ def main():
         "Total number of hidden layers: 1+depth (default: 0)",
     )
     parser.add_argument(
+        "--jacobi_iteration",
+        default=15,
+        type=int,
+        help="Number of iteration for the jacobi algo in CayleyNets. ",
+    )
+    parser.add_argument(
         "--max_degree",
         default=3,
         type=int,
@@ -225,6 +231,9 @@ def main():
         "epochs"
     ]  # Tolerance for early stopping (# of epochs). No early stopping if set to param.epochs
     params["max_degree"] = args.max_degree  # Maximum Chebyshev polynomial degree.
+    params["jacobi_iteration"] = (
+        args.jacobi_iteration
+    )  # Jacobi algo iteration number for CayleyNets only
     params["depth"] = (
         args.depth
     )  # number of additional hidden layers in the GCN. Total number of hidden layers: 1+depth

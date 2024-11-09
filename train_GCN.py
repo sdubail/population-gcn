@@ -26,7 +26,7 @@ import sklearn.metrics
 import tensorflow as tf
 from spectral_analysis import extract_chebyshev_coeffs, plot_chebyshev_filters
 
-from gcn.models import MLP, Deep_GCN
+from gcn.models import MLP, Deep_Cayley_GCN, Deep_GCN
 from gcn.utils import *
 
 tf.compat.v1.disable_eager_execution()
@@ -84,6 +84,11 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
         params["spectral_analysis"],
         "Perform filters spectral analysis or not.",
     )
+    flags.DEFINE_integer(
+        "jacobi_iteration",
+        params["jacobi_iteration"],
+        "Number of iteration for Jacobi algorithm.",
+    )
 
     # Create test, val and train masked variables
     y_train, y_val, y_test, train_mask, val_mask, test_mask = get_train_test_masks(
@@ -100,6 +105,10 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
         support = chebyshev_polynomials(adj, FLAGS.max_degree)
         num_supports = 1 + FLAGS.max_degree
         model_func = Deep_GCN
+    elif FLAGS.model == "gcn_cayley":
+        support = [preprocess_adj(adj)]  # Not used
+        num_supports = 1
+        model_func = Deep_Cayley_GCN
     elif FLAGS.model == "dense":
         support = [preprocess_adj(adj)]  # Not used
         num_supports = 1
@@ -125,19 +134,30 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
     }
 
     # Create model
+    kwargs = {}
+    if FLAGS.model == "gcn_cayley":
+        kwargs = {
+            "jacobi_iteration": FLAGS.jacobi_iteration,
+            "order": FLAGS.max_degree,
+            "adj_normalized": normalize_adj(adj),
+        }
     model = model_func(
-        placeholders, input_dim=features[2][1], depth=FLAGS.depth, logging=True
+        placeholders,
+        input_dim=features[2][1],
+        depth=FLAGS.depth,
+        logging=True,
+        **kwargs,
     )
 
     # Initialize session
     sess = tf.compat.v1.Session()
 
     # Define model evaluation function
-    def evaluate(feats, graph, label, mask, placeholder):
+    def evaluate(feats, graph, label, mask, placeholders):
         t_test = time.time()
-        feed_dict_val = construct_feed_dict(feats, graph, label, mask, placeholder)
+        feed_dict_val = construct_feed_dict(feats, graph, label, mask, placeholders)
         feed_dict_val.update(
-            {placeholder["dropout"]: 0.0, placeholder["phase_train"]: False}
+            {placeholders["dropout"]: 0.0, placeholders["phase_train"]: False}
         )
 
         # Get all activations
