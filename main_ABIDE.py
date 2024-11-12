@@ -16,6 +16,7 @@
 
 import argparse
 import time
+from enum import Enum
 
 import ABIDEParser as Reader
 import numpy as np
@@ -26,7 +27,45 @@ from joblib import Parallel, delayed
 from scipy import sparse
 from scipy.spatial import distance
 from sklearn.linear_model import RidgeClassifier
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import StratifiedKFold
+
+
+class SimMethod(Enum):
+    expo_threshold = "expo_threshold"
+    expo_topk = "expo_top_k"
+    cosine = "cosine"
+    linear = "linear"
+    polynomial_decay = "polynomial_decay"
+
+
+def similarity(method: SimMethod, dist=None, x_data=None, threshold=0, top_k=10):
+    if method == SimMethod.cosine:
+        sparse_graph = cosine_similarity(x_data)
+    elif method == SimMethod.expo_threshold:
+        sigma = np.mean(dist)
+        sparse_graph = np.where(
+            np.exp(-(dist**2) / (2 * sigma**2)) > threshold,
+            np.exp(-(dist**2) / (2 * sigma**2)),
+            0,
+        )
+    elif method == SimMethod.expo_topk:
+        # Keep only top k strongest connections per node
+        k = top_k  # or another value
+        sigma = np.mean(dist)
+        sparse_graph = np.zeros_like(dist)
+        for i in range(len(dist)):
+            indices = np.argsort(dist[i])[:k]
+            sparse_graph[i, indices] = np.exp(-(dist[i, indices] ** 2) / (2 * sigma**2))
+    elif method == SimMethod.linear:
+        # Linear kernel
+        sparse_graph = 1 - (dist / np.max(dist))
+    elif method == SimMethod.polynomial_decay:
+        # Or polynomial decay
+        sigma = np.mean(dist)
+        sparse_graph = 1 / (1 + (dist / sigma) ** 2)
+
+    return sparse_graph
 
 
 # Prepares the training/test data for each cross validation fold and trains the GCN
@@ -67,9 +106,21 @@ def train_fold(
     distv = distance.pdist(x_data, metric="correlation")
     # Convert to a square symmetric distance matrix
     dist = distance.squareform(distv)
-    sigma = np.mean(dist)
+
     # Get affinity from similarity matrix
-    sparse_graph = np.exp(-(dist**2) / (2 * sigma**2))
+
+    sim_method = params["sim_method"]
+    sim_threshold = params["sim_threshold"]
+    sim_top_k = params["sim_top_k"]
+
+    sparse_graph = similarity(
+        method=SimMethod(sim_method),
+        dist=dist,
+        x_data=x_data,
+        threshold=sim_threshold,
+        top_k=sim_top_k,
+    )
+
     final_graph = graph_feat * sparse_graph
 
     # Linear classifier
@@ -189,7 +240,7 @@ def main():
     )
     parser.add_argument(
         "--folds",
-        default=0,
+        default=11,
         type=int,
         help="For cross validation, specifies which fold will be "
         "used. All folds are used if set to 11 (default: 11)",
@@ -214,6 +265,24 @@ def main():
         default=False,
         type=bool,
         help="Compute spectral analysis or not. Default False",
+    )
+    parser.add_argument(
+        "--sim_method",
+        default=SimMethod.expo_threshold.value,
+        type=str,
+        help="Method for graph similarity computation.",
+    )
+    parser.add_argument(
+        "--sim_threshold",
+        default=0,
+        type=int,
+        help="Threshold for graph similarity computation.",
+    )
+    parser.add_argument(
+        "--sim_top_k",
+        default=10,
+        type=int,
+        help="Top_k for graph similarity computation.",
     )
 
     args = parser.parse_args()
@@ -247,6 +316,9 @@ def main():
         args.num_training
     )  # percentage of training set used for training
     params["spectral_analysis"] = args.spectral_analysis
+    params["sim_method"] = args.sim_method
+    params["sim_threshold"] = args.sim_threshold
+    params["sim_top_k"] = args.sim_top_k
     atlas = args.atlas  # atlas for network construction (node definition)
     connectivity = (
         args.connectivity
@@ -332,9 +404,11 @@ def main():
         print("overall AUC %f" + str(np.mean(scores_auc)))
 
     if args.save == 1:
-        result_name = (
-            f"ABIDE_classification_{args.model}_{args.depth}_{args.max_degree}"
-        )
+        result_name = f"ABIDE_classification_{args.model}_{args.depth}_{args.max_degree}_{args.sim_method}"
+        if args.sim_threshold > 0:
+            result_name += f"_{args.sim_threshold}"
+        if args.sim_method == SimMethod.expo_topk.value:
+            result_name += f"_{args.sim_top_k}"
         sio.savemat(
             "results/" + result_name + ".mat",
             {

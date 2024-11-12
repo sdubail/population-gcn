@@ -20,7 +20,6 @@ from __future__ import division, print_function
 import random
 import time
 
-import matplotlib.pyplot as plt
 import numpy as np
 import sklearn.metrics
 import tensorflow as tf
@@ -89,6 +88,9 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
         params["jacobi_iteration"],
         "Number of iteration for Jacobi algorithm.",
     )
+    flags.DEFINE_string("sim_method", params["sim_method"], "")
+    flags.DEFINE_integer("sim_top_k", params["sim_top_k"], "")
+    flags.DEFINE_float("sim_threshold", params["sim_threshold"], "")
 
     # Create test, val and train masked variables
     y_train, y_val, y_test, train_mask, val_mask, test_mask = get_train_test_masks(
@@ -256,10 +258,15 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
 
     if FLAGS.spectral_analysis:
         learned_coeffs = extract_chebyshev_coeffs(sess, model)
+        plot_file = f"learned_filters_{FLAGS.model}_{FLAGS.depth}_{FLAGS.max_degree}_{FLAGS.sim_method}"
+        if FLAGS.sim_threshold > 0:
+            plot_file += f"_{FLAGS.sim_threshold}"
+        if FLAGS.sim_method == "expo_top_k":
+            plot_file += f"_{FLAGS.sim_top_k}"
         plot_chebyshev_filters(
             adj,
             k=FLAGS.max_degree,
-            plot_file=f"learned_filters_{FLAGS.model}_{FLAGS.depth}_{FLAGS.max_degree}.png",
+            plot_file=plot_file + ".png",
             learned_coeffs=learned_coeffs,
         )
 

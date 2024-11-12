@@ -83,34 +83,43 @@ def plot_chebyshev_filters(adj, k, plot_file, learned_coeffs=None, num_points=10
         n_filters = in_features * out_features
         filter_colors = plt.cm.viridis(np.linspace(0, 1, n_filters))
 
-        # Plot each filter (each input-output feature pair)
-        for in_feat in range(in_features):
-            for out_feat in range(out_features):
-                # Get coefficients for this filter
-                coeffs = [w[in_feat, out_feat] for w in learned_coeffs]
+        # Get total number of filters
+        total_filters = in_features * out_features
 
-                # Compute filter
-                filt = np.zeros(num_points)
-                for i in range(k + 1):
-                    filt += coeffs[i] * T[i]
+        # Randomly select 10 filters (or all if total_filters < 10)
+        num_to_plot = min(10, total_filters)
+        random_indices = np.random.choice(total_filters, num_to_plot, replace=False)
 
-                color_idx = in_feat * out_features + out_feat
-                ax2.plot(
-                    x,
-                    filt,
-                    color=filter_colors[color_idx],
-                    linewidth=2,
-                    alpha=0.7,
-                )
+        # Plot random subset of filters
+        for idx in random_indices:
+            # Convert flat index back to in_feat, out_feat coordinates
+            in_feat = idx // out_features
+            out_feat = idx % out_features
 
-                print(
-                    f"Coefficients for filter (in={in_feat}, out={out_feat}):",
-                    [f"{c:.3f}" for c in coeffs],
-                )
+            # Get coefficients for this filter
+            coeffs = [w[in_feat, out_feat] for w in learned_coeffs]
+
+            # Compute filter
+            filt = np.zeros(num_points)
+            for i in range(k + 1):
+                filt += coeffs[i] * T[i]
+
+            ax2.plot(
+                x,
+                filt,
+                color=filter_colors[idx],
+                linewidth=2,
+                alpha=0.7,
+            )
+
+            print(
+                f"Coefficients for filter (in={in_feat}, out={out_feat}):",
+                [f"{c:.3f}" for c in coeffs],
+            )
 
     ax2.set_xlabel("λ")
     ax2.set_ylabel("g(λ)")
-    ax2.set_title("All Learned Spectral Filters")
+    ax2.set_title("Selection of Learned Spectral Filters")
     ax2.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
     ax2.grid(True, alpha=0.3)
 
