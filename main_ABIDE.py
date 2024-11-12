@@ -16,7 +16,6 @@
 
 import argparse
 import time
-from enum import Enum
 
 import ABIDEParser as Reader
 import numpy as np
@@ -27,45 +26,8 @@ from joblib import Parallel, delayed
 from scipy import sparse
 from scipy.spatial import distance
 from sklearn.linear_model import RidgeClassifier
-from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import StratifiedKFold
-
-
-class SimMethod(Enum):
-    expo_threshold = "expo_threshold"
-    expo_topk = "expo_top_k"
-    cosine = "cosine"
-    linear = "linear"
-    polynomial_decay = "polynomial_decay"
-
-
-def similarity(method: SimMethod, dist=None, x_data=None, threshold=0, top_k=10):
-    if method == SimMethod.cosine:
-        sparse_graph = cosine_similarity(x_data)
-    elif method == SimMethod.expo_threshold:
-        sigma = np.mean(dist)
-        sparse_graph = np.where(
-            np.exp(-(dist**2) / (2 * sigma**2)) > threshold,
-            np.exp(-(dist**2) / (2 * sigma**2)),
-            0,
-        )
-    elif method == SimMethod.expo_topk:
-        # Keep only top k strongest connections per node
-        k = top_k  # or another value
-        sigma = np.mean(dist)
-        sparse_graph = np.zeros_like(dist)
-        for i in range(len(dist)):
-            indices = np.argsort(dist[i])[:k]
-            sparse_graph[i, indices] = np.exp(-(dist[i, indices] ** 2) / (2 * sigma**2))
-    elif method == SimMethod.linear:
-        # Linear kernel
-        sparse_graph = 1 - (dist / np.max(dist))
-    elif method == SimMethod.polynomial_decay:
-        # Or polynomial decay
-        sigma = np.mean(dist)
-        sparse_graph = 1 / (1 + (dist / sigma) ** 2)
-
-    return sparse_graph
+from absl import flags
 
 
 # Prepares the training/test data for each cross validation fold and trains the GCN
@@ -106,21 +68,9 @@ def train_fold(
     distv = distance.pdist(x_data, metric="correlation")
     # Convert to a square symmetric distance matrix
     dist = distance.squareform(distv)
-
+    sigma = np.mean(dist)
     # Get affinity from similarity matrix
-
-    sim_method = params["sim_method"]
-    sim_threshold = params["sim_threshold"]
-    sim_top_k = params["sim_top_k"]
-
-    sparse_graph = similarity(
-        method=SimMethod(sim_method),
-        dist=dist,
-        x_data=x_data,
-        threshold=sim_threshold,
-        top_k=sim_top_k,
-    )
-
+    sparse_graph = np.exp(-(dist**2) / (2 * sigma**2))
     final_graph = graph_feat * sparse_graph
 
     # Linear classifier
@@ -151,7 +101,7 @@ def train_fold(
     test_acc = int(round(test_acc * len(test_ind)))
     lin_acc = int(round(lin_acc * len(test_ind)))
 
-    return test_acc, test_auc, lin_acc, lin_auc, fold_size
+    return test_acc, test_auc, lin_acc, lin_auc, fold_size, final_graph
 
 
 def main():
@@ -191,7 +141,7 @@ def main():
         "for more options )",
     )
     parser.add_argument(
-        "--epochs", default=150, type=int, help="Number of epochs to train"
+        "--epochs", default=3, type=int, help="Number of epochs to train"
     )
     parser.add_argument(
         "--num_features",
@@ -212,12 +162,6 @@ def main():
         type=int,
         help="Number of additional hidden layers in the GCN. "
         "Total number of hidden layers: 1+depth (default: 0)",
-    )
-    parser.add_argument(
-        "--jacobi_iteration",
-        default=15,
-        type=int,
-        help="Number of iteration for the jacobi algo in CayleyNets. ",
     )
     parser.add_argument(
         "--max_degree",
@@ -267,22 +211,16 @@ def main():
         help="Compute spectral analysis or not. Default False",
     )
     parser.add_argument(
-        "--sim_method",
-        default=SimMethod.expo_threshold.value,
+        "--test_on_random_GCN_with_same_density",
+        default=False,
+        type=bool,
+        help="Model with a random graph support with same density. Default False",
+    )
+    parser.add_argument(
+        "--prefix_filename_for_saving",
+        default="",
         type=str,
-        help="Method for graph similarity computation.",
-    )
-    parser.add_argument(
-        "--sim_threshold",
-        default=0,
-        type=int,
-        help="Threshold for graph similarity computation.",
-    )
-    parser.add_argument(
-        "--sim_top_k",
-        default=10,
-        type=int,
-        help="Top_k for graph similarity computation.",
+        help="Additionnal name for the filename to save the result. Default ''. For a random graph support, advice: randomConnectivity#1",
     )
 
     args = parser.parse_args()
@@ -300,9 +238,6 @@ def main():
         "epochs"
     ]  # Tolerance for early stopping (# of epochs). No early stopping if set to param.epochs
     params["max_degree"] = args.max_degree  # Maximum Chebyshev polynomial degree.
-    params["jacobi_iteration"] = (
-        args.jacobi_iteration
-    )  # Jacobi algo iteration number for CayleyNets only
     params["depth"] = (
         args.depth
     )  # number of additional hidden layers in the GCN. Total number of hidden layers: 1+depth
@@ -316,13 +251,12 @@ def main():
         args.num_training
     )  # percentage of training set used for training
     params["spectral_analysis"] = args.spectral_analysis
-    params["sim_method"] = args.sim_method
-    params["sim_threshold"] = args.sim_threshold
-    params["sim_top_k"] = args.sim_top_k
     atlas = args.atlas  # atlas for network construction (node definition)
     connectivity = (
         args.connectivity
     )  # type of connectivity used for network construction
+    test_on_random_GCN_with_same_density = args.test_on_random_GCN_with_same_density
+    prefix_filename_for_saving = args.prefix_filename_for_saving
 
     # Get class labels
     subject_IDs = Reader.get_ids()
@@ -351,10 +285,12 @@ def main():
 
     # Compute population graph using gender and acquisition site
     graph = Reader.create_affinity_graph_from_scores(["SEX", "SITE_ID"], subject_IDs)
-
+     
+    # choose the graph depending if it is a radom connectivity experience or a classical one.
+    if test_on_random_GCN_with_same_density:
+        graph = Reader.random_graph_with_same_density(graph)
     # Folds for cross validation experiments
     skf = StratifiedKFold(n_splits=10)
-
     if args.folds == 11:  # run cross validation on all folds
         scores = Parallel(n_jobs=10)(
             delayed(train_fold)(
@@ -372,14 +308,13 @@ def main():
                 list(skf.split(np.zeros(num_nodes), np.squeeze(y)))
             )
         )
-
-        print(scores)
-
+        
         scores_acc = [x[0] for x in scores]
         scores_auc = [x[1] for x in scores]
         scores_lin = [x[2] for x in scores]
         scores_auc_lin = [x[3] for x in scores]
         fold_size = [x[4] for x in scores]
+        final_graph = [x[5] for x in scores]
 
         print("overall linear accuracy %f" + str(np.sum(scores_lin) * 1.0 / num_nodes))
         print("overall linear AUC %f" + str(np.mean(scores_auc_lin)))
@@ -394,7 +329,7 @@ def main():
 
         val = test
 
-        scores_acc, scores_auc, scores_lin, scores_auc_lin, fold_size = train_fold(
+        scores_acc, scores_auc, scores_lin, scores_auc_lin, fold_size, final_graph = train_fold(
             train, test, val, graph, features, y, y_data, params, subject_IDs
         )
 
@@ -404,20 +339,21 @@ def main():
         print("overall AUC %f" + str(np.mean(scores_auc)))
 
     if args.save == 1:
-        result_name = f"ABIDE_classification_{args.model}_{args.depth}_{args.max_degree}_{args.sim_method}"
-        if args.sim_threshold > 0:
-            result_name += f"_{args.sim_threshold}"
-        if args.sim_method == SimMethod.expo_topk.value:
-            result_name += f"_{args.sim_top_k}"
-        sio.savemat(
-            "results/" + result_name + ".mat",
-            {
+        result_name = (
+            f"{prefix_filename_for_saving}ABIDE_classification_{args.model}_{args.depth}_{args.max_degree}_{args.epochs}"
+        )
+        data = {
                 "lin": scores_lin,
                 "lin_auc": scores_auc_lin,
                 "acc": scores_acc,
                 "auc": scores_auc,
                 "folds": fold_size,
-            },
+                "final_graph":final_graph,
+                "graph": graph
+            }  
+        sio.savemat(
+            "results/" + result_name + ".mat",
+            data,
         )
 
 

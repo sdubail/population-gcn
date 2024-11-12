@@ -22,7 +22,7 @@ import scipy.io as sio
 from nilearn import connectome
 from sklearn.feature_selection import RFE
 from sklearn.linear_model import RidgeClassifier
-
+import networkx as nx
 # Reading and computing the input data
 
 # Selected pipeline
@@ -279,3 +279,27 @@ def create_affinity_graph_from_scores(scores, subject_list):
                         graph[j, k] += 1
 
     return graph
+
+
+# def random_graph_with_same_density(graph):
+#     # num_nodes = graph.shape[0]
+#     # max_edges = num_nodes * (num_nodes - 1) / 2
+#     # density = graph.sum() / max_edges
+#     # random_graph = nx.to_numpy_array(nx.erdos_renyi_graph(num_nodes, density))
+#     # Flatten the matrix into a 1D array
+    
+#     flattened_matrix = graph.flatten()
+#     # Shuffle the 1D array
+#     np.random.shuffle(flattened_matrix)
+#     # Reshape the shuffled array back into the original matrix shape
+#     random_graph = flattened_matrix.reshape(graph.shape)
+    
+#     return random_graph
+
+def random_graph_with_same_density(graph):
+    non_diagonal_elements = graph[np.triu_indices_from(graph, k=1)] 
+    np.random.shuffle(non_diagonal_elements)
+    shuffled_graph = graph.copy() 
+    shuffled_graph[np.triu_indices_from(graph, k=1)] = non_diagonal_elements
+    shuffled_graph[np.tril_indices_from(graph, k=-1)] = non_diagonal_elements
+    return shuffled_graph

@@ -20,12 +20,13 @@ from __future__ import division, print_function
 import random
 import time
 
+import matplotlib.pyplot as plt
 import numpy as np
 import sklearn.metrics
 import tensorflow as tf
 from spectral_analysis import extract_chebyshev_coeffs, plot_chebyshev_filters
 
-from gcn.models import MLP, Deep_Cayley_GCN, Deep_GCN
+from gcn.models import MLP, Deep_GCN
 from gcn.utils import *
 
 tf.compat.v1.disable_eager_execution()
@@ -83,14 +84,6 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
         params["spectral_analysis"],
         "Perform filters spectral analysis or not.",
     )
-    flags.DEFINE_integer(
-        "jacobi_iteration",
-        params["jacobi_iteration"],
-        "Number of iteration for Jacobi algorithm.",
-    )
-    flags.DEFINE_string("sim_method", params["sim_method"], "")
-    flags.DEFINE_integer("sim_top_k", params["sim_top_k"], "")
-    flags.DEFINE_float("sim_threshold", params["sim_threshold"], "")
 
     # Create test, val and train masked variables
     y_train, y_val, y_test, train_mask, val_mask, test_mask = get_train_test_masks(
@@ -107,10 +100,6 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
         support = chebyshev_polynomials(adj, FLAGS.max_degree)
         num_supports = 1 + FLAGS.max_degree
         model_func = Deep_GCN
-    elif FLAGS.model == "gcn_cayley":
-        support = [preprocess_adj(adj)]  # Not used
-        num_supports = 1
-        model_func = Deep_Cayley_GCN
     elif FLAGS.model == "dense":
         support = [preprocess_adj(adj)]  # Not used
         num_supports = 1
@@ -136,30 +125,19 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
     }
 
     # Create model
-    kwargs = {}
-    if FLAGS.model == "gcn_cayley":
-        kwargs = {
-            "jacobi_iteration": FLAGS.jacobi_iteration,
-            "order": FLAGS.max_degree,
-            "adj_normalized": normalize_adj(adj),
-        }
     model = model_func(
-        placeholders,
-        input_dim=features[2][1],
-        depth=FLAGS.depth,
-        logging=True,
-        **kwargs,
+        placeholders, input_dim=features[2][1], depth=FLAGS.depth, logging=True
     )
 
     # Initialize session
     sess = tf.compat.v1.Session()
 
     # Define model evaluation function
-    def evaluate(feats, graph, label, mask, placeholders):
+    def evaluate(feats, graph, label, mask, placeholder):
         t_test = time.time()
-        feed_dict_val = construct_feed_dict(feats, graph, label, mask, placeholders)
+        feed_dict_val = construct_feed_dict(feats, graph, label, mask, placeholder)
         feed_dict_val.update(
-            {placeholders["dropout"]: 0.0, placeholders["phase_train"]: False}
+            {placeholder["dropout"]: 0.0, placeholder["phase_train"]: False}
         )
 
         # Get all activations
@@ -258,15 +236,10 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
 
     if FLAGS.spectral_analysis:
         learned_coeffs = extract_chebyshev_coeffs(sess, model)
-        plot_file = f"learned_filters_{FLAGS.model}_{FLAGS.depth}_{FLAGS.max_degree}_{FLAGS.sim_method}"
-        if FLAGS.sim_threshold > 0:
-            plot_file += f"_{FLAGS.sim_threshold}"
-        if FLAGS.sim_method == "expo_top_k":
-            plot_file += f"_{FLAGS.sim_top_k}"
         plot_chebyshev_filters(
             adj,
             k=FLAGS.max_degree,
-            plot_file=plot_file + ".png",
+            plot_file=f"learned_filters_{FLAGS.model}_{FLAGS.depth}_{FLAGS.max_degree}.png",
             learned_coeffs=learned_coeffs,
         )
 

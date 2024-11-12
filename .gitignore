@@ -2,3 +2,5 @@ data
 results
 parameter_sweep_results/
 __pycache__/
+gcn 
+figures
