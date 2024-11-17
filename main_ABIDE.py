@@ -284,6 +284,12 @@ def main():
         type=int,
         help="Top_k for graph similarity computation.",
     )
+    parser.add_argument(
+        "--Random_connectivity",
+        default='No',
+        type=str,
+        help="Model with a random graph support with same density. Default: 'No' (options: 'Random', 'Worst')",
+    )
 
     args = parser.parse_args()
     start_time = time.time()
@@ -323,7 +329,7 @@ def main():
     connectivity = (
         args.connectivity
     )  # type of connectivity used for network construction
-
+    RandomConnectivityType = args.Random_connectivity
     # Get class labels
     subject_IDs = Reader.get_ids()
     labels = Reader.get_subject_score(subject_IDs, score="DX_GROUP")
@@ -351,6 +357,11 @@ def main():
 
     # Compute population graph using gender and acquisition site
     graph = Reader.create_affinity_graph_from_scores(["SEX", "SITE_ID"], subject_IDs)
+    # shuffle the graph depending if it is a random connectivity experience
+    if RandomConnectivityType == 'Random':
+        graph = Reader.random_affinity_graph_with_same_density(graph)
+    if RandomConnectivityType == 'Worst':
+        graph = Reader.create_worst_affinity_graph_from_scores(["SEX", "SITE_ID"], subject_IDs)
 
     # Folds for cross validation experiments
     skf = StratifiedKFold(n_splits=10)
@@ -419,6 +430,7 @@ def main():
                 "folds": fold_size,
             },
         )
+        np.save("results/" + f"graphConnectivity_{args.model}_{args.depth}_{args.max_degree}_{args.sim_method}_RdGraph_{args.Random_connectivity}.npy", graph)
 
 
 if __name__ == "__main__":
