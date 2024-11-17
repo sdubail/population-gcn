@@ -26,7 +26,8 @@ import train_GCN as Train
 from joblib import Parallel, delayed
 from scipy import sparse
 from scipy.spatial import distance
-from sklearn.linear_model import RidgeClassifier
+from sklearn.linear_model import RidgeClassifier, LogisticRegression
+from sklearn.svm import SVC
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import StratifiedKFold
 
@@ -70,7 +71,7 @@ def similarity(method: SimMethod, dist=None, x_data=None, threshold=0, top_k=10)
 
 # Prepares the training/test data for each cross validation fold and trains the GCN
 def train_fold(
-    train_ind, test_ind, val_ind, graph_feat, features, y, y_data, params, subject_IDs
+    train_ind, test_ind, val_ind, graph_feat, features, y, y_data, params, subject_IDs, test_with_other_classifiers:bool=False
 ):
     """
         train_ind       : indices of the training samples
@@ -133,6 +134,28 @@ def train_fold(
     lin_auc = sklearn.metrics.roc_auc_score(y[test_ind] - 1, pred)
 
     print("Linear Accuracy: " + str(lin_acc))
+
+    # Other Classifiers
+    if test_with_other_classifiers:
+        logistic_clf = LogisticRegression(max_iter=1000, random_state=42)
+        svc_clf = SVC(kernel='linear', random_state=42)
+        models = {
+            "Logistic Regression": logistic_clf,
+            "Linear SVC": svc_clf
+        }
+        otherResults = {}
+
+        for name, model in models.items():           
+            # Fit the model and evaluate on test data
+            model.fit(x_data[train_ind, :], y[train_ind].ravel())
+            # Compute the accuracy
+            model_acc = clf.score(x_data[test_ind, :], y[test_ind].ravel())
+            # Compute the AUC
+            pred = clf.decision_function(x_data[test_ind, :])
+            model_auc = sklearn.metrics.roc_auc_score(y[test_ind] - 1, pred)
+            otherResults[f'{name}_acc'] = model_acc
+            otherResults[f'{name}_auc'] = model_auc
+    
     # print("Y_LABEL BEFORE EVERYTHIN", np.unique(y_data, axis=0))
     # Classification with GCNs
     test_acc, test_auc = Train.run_training(
@@ -150,8 +173,11 @@ def train_fold(
     # return number of correctly classified samples instead of percentage
     test_acc = int(round(test_acc * len(test_ind)))
     lin_acc = int(round(lin_acc * len(test_ind)))
+    if test_with_other_classifiers:
+        return test_acc, test_auc, lin_acc, lin_auc, fold_size, otherResults
+    else:
+        return test_acc, test_auc, lin_acc, lin_auc, fold_size
 
-    return test_acc, test_auc, lin_acc, lin_auc, fold_size
 
 
 def main():
@@ -290,6 +316,12 @@ def main():
         type=str,
         help="Model with a random graph support with same density. Default: 'No' (options: 'Random', 'Worst')",
     )
+    parser.add_argument(
+        "--test_with_other_classifiers",
+        default=False,
+        type=bool,
+        help="Test with other linear classifiers if True. Default: False.",
+    )
 
     args = parser.parse_args()
     start_time = time.time()
@@ -330,6 +362,7 @@ def main():
         args.connectivity
     )  # type of connectivity used for network construction
     RandomConnectivityType = args.Random_connectivity
+    test_with_other_classifiers = args.test_with_other_classifiers
     # Get class labels
     subject_IDs = Reader.get_ids()
     labels = Reader.get_subject_score(subject_IDs, score="DX_GROUP")
@@ -378,6 +411,7 @@ def main():
                 y_data,
                 params,
                 subject_IDs,
+                test_with_other_classifiers
             )
             for train_ind, test_ind in reversed(
                 list(skf.split(np.zeros(num_nodes), np.squeeze(y)))
@@ -391,6 +425,10 @@ def main():
         scores_lin = [x[2] for x in scores]
         scores_auc_lin = [x[3] for x in scores]
         fold_size = [x[4] for x in scores]
+        if test_with_other_classifiers:
+            scores_other_classifiers = {}
+            for k in scores[0][5].keys():
+                scores_other_classifiers[k] = [x[5][k] for x in scores]
 
         print("overall linear accuracy %f" + str(np.sum(scores_lin) * 1.0 / num_nodes))
         print("overall linear AUC %f" + str(np.mean(scores_auc_lin)))
@@ -405,9 +443,15 @@ def main():
 
         val = test
 
-        scores_acc, scores_auc, scores_lin, scores_auc_lin, fold_size = train_fold(
-            train, test, val, graph, features, y, y_data, params, subject_IDs
+        scores = train_fold(
+            train, test, val, graph, features, y, y_data, params, subject_IDs, test_with_other_classifiers
         )
+        if not test_with_other_classifiers:
+            scores_acc, scores_auc, scores_lin, scores_auc_lin, fold_size = scores
+        else:
+            scores_other_classifiers = {}
+            for k in scores[0][5].keys():
+                scores_other_classifiers[k] = scores[5][k]
 
         print("overall linear accuracy %f" + str(np.sum(scores_lin) * 1.0 / fold_size))
         print("overall linear AUC %f" + str(np.mean(scores_auc_lin)))
@@ -415,20 +459,26 @@ def main():
         print("overall AUC %f" + str(np.mean(scores_auc)))
 
     if args.save == 1:
-        result_name = f"ABIDE_classification_{args.model}_{args.depth}_{args.max_degree}_{args.sim_method}"
+        result_name = f"ABIDE_classification_{args.model}_{args.depth}_{args.max_degree}_{args.sim_method}_RdGraph_{args.Random_connectivity}"
         if args.sim_threshold > 0:
             result_name += f"_{args.sim_threshold}"
         if args.sim_method == SimMethod.expo_topk.value:
             result_name += f"_{args.sim_top_k}"
-        sio.savemat(
-            "results/" + result_name + ".mat",
-            {
+            
+        data = {
                 "lin": scores_lin,
                 "lin_auc": scores_auc_lin,
                 "acc": scores_acc,
                 "auc": scores_auc,
                 "folds": fold_size,
-            },
+            }
+        if test_with_other_classifiers:
+            for k,v in scores_other_classifiers.items():
+                data[k] = v
+                
+        sio.savemat(
+            "results/" + result_name + ".mat",
+            data,
         )
         np.save("results/" + f"graphConnectivity_{args.model}_{args.depth}_{args.max_degree}_{args.sim_method}_RdGraph_{args.Random_connectivity}.npy", graph)
 
