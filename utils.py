@@ -5,8 +5,31 @@ import pandas as pd
 import ABIDEParser as Reader
 import os
 
-def get_graph_density(graph:np.ndarray):
+def get_graph_density(graph:np.ndarray, eps = 10**-3):
+    """Returns density with respect to the number of connections between nodes.
+       A connection with an amplitude with more than esp variable is counted as a connection, otherwise it is not counted.
+    
+
+    Args:
+        graph (np.ndarray): (nb_nodes, nb_nodes)
+
+    Returns:
+        float: the usual density of a graph.
+    """
+    # graph_with_threshold_connection = (graph > eps)
     return nx.density(nx.from_numpy_array(graph))
+
+def graph_weights_density(graph:np.ndarray):
+    """Returns density of the weights of the connection in the graph to better approach the definition of "sparse graph" in the article.
+
+    Args:
+        graph (np.ndarray): : (nb_nodes, nb_nodes)
+        
+    Returns:
+        float: sum of the weigths divided by the number of connection possible
+    """
+    n = graph.shape[0]
+    return 2*np.sum(graph/2) / (n*(n-1))
 
 def load_data(filenames_for_experience_with_rd_graph_support:list, filename_best_model:str, other_classifiers:bool):
     data_best_model = scipy.io.loadmat(filename_best_model)
