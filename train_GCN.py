@@ -27,6 +27,7 @@ from spectral_analysis import extract_chebyshev_coeffs, plot_chebyshev_filters
 
 from gcn.models import MLP, Deep_Cayley_GCN, Deep_GCN
 from gcn.utils import *
+from sklearn.model_selection import StratifiedKFold
 
 tf.compat.v1.disable_eager_execution()
 
@@ -91,6 +92,14 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
     flags.DEFINE_string("sim_method", params["sim_method"], "")
     flags.DEFINE_integer("sim_top_k", params["sim_top_k"], "")
     flags.DEFINE_float("sim_threshold", params["sim_threshold"], "")
+    flags.DEFINE_string('phenotypic_graph_type', params["phenotypic_graph_type"], '')
+    flags.DEFINE_string('similarity_support_type', params["similarity_support_type"], '')
+    flags.DEFINE_string('folder_name_for_saving', params["folder_name_for_saving"], '')
+    flags.DEFINE_integer('folds', params["folds"], '')
+    flags.DEFINE_integer('seed', params["seed"], '')
+    flags.DEFINE_integer('seed_cv_fold', params["seed_cv_fold"], '')   
+    flags.DEFINE_integer('n_splits', params["n_splits"], '')
+    flags.DEFINE_integer('num_features', params["num_features"], '')
 
     # Create test, val and train masked variables
     y_train, y_val, y_test, train_mask, val_mask, test_mask = get_train_test_masks(
