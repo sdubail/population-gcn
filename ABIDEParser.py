@@ -22,6 +22,7 @@ import scipy.io as sio
 from nilearn import connectome
 from sklearn.feature_selection import RFE
 from sklearn.linear_model import RidgeClassifier
+from sklearn.decomposition import PCA
 
 # Reading and computing the input data
 
@@ -155,7 +156,7 @@ def get_subject_score(subject_list, score):
 
 
 # Dimensionality reduction step for the feature vector using a ridge classifier
-def feature_selection(matrix, labels, train_ind, fnum):
+def feature_selection(matrix, labels, train_ind, fnum, method):
     """
         matrix       : feature matrix (num_subjects x num_features)
         labels       : ground truth labels (num_subjects x 1)
@@ -165,18 +166,22 @@ def feature_selection(matrix, labels, train_ind, fnum):
     return:
         x_data      : feature matrix of lower dimension (num_subjects x fnum)
     """
+    if method == 'RFE':
+        estimator = RidgeClassifier()
+        selector = RFE(estimator, n_features_to_select=fnum, step=100, verbose=1)
 
-    estimator = RidgeClassifier()
-    selector = RFE(estimator, n_features_to_select=fnum, step=100, verbose=1)
-
-    featureX = matrix[train_ind, :]
-    featureY = labels[train_ind]
-    selector = selector.fit(featureX, featureY.ravel())
-    x_data = selector.transform(matrix)
-
-    print("Number of labeled samples %d" % len(train_ind))
-    print("Number of features selected %d" % x_data.shape[1])
-
+        featureX = matrix[train_ind, :]
+        featureY = labels[train_ind]
+        selector = selector.fit(featureX, featureY.ravel())
+        x_data = selector.transform(matrix)
+        
+        print("Number of labeled samples %d" % len(train_ind))
+        print("Number of features selected %d" % x_data.shape[1])
+    
+    elif method == 'PCA':
+        print('PCA reduction')
+        pca = PCA(n_components=fnum)  # Keep the top 50 principal components
+        x_data = pca.fit_transform(matrix)    
     return x_data
 
 
