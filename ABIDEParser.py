@@ -285,7 +285,7 @@ def random_affinity_graph_with_same_density(graph):
     np.random.shuffle(non_diagonal_elements)
     shuffled_graph = graph.copy() 
     shuffled_graph[np.triu_indices_from(graph, k=1)] = non_diagonal_elements
-    shuffled_graph[np.tril_indices_from(graph, k=-1)] = non_diagonal_elements
+    (shuffled_graph.T)[np.triu_indices_from(graph, k = 1)] = non_diagonal_elements
     return shuffled_graph
 
 def create_worst_affinity_graph_from_initial_graph(graph):
