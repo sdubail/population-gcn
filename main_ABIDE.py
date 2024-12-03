@@ -16,8 +16,7 @@
 
 import argparse
 import time
-from enum import Enum
-
+import os
 import ABIDEParser as Reader
 import numpy as np
 import scipy.io as sio
@@ -30,48 +29,16 @@ from sklearn.linear_model import RidgeClassifier, LogisticRegression
 from sklearn.svm import SVC
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import StratifiedKFold
+import adj_matrix_construction_visualization as build_adjmat
+from adj_matrix_construction_visualization import SimMethod
+import plotting
 
-
-class SimMethod(Enum):
-    expo_threshold = "expo_threshold"
-    expo_topk = "expo_top_k"
-    cosine = "cosine"
-    linear = "linear"
-    polynomial_decay = "polynomial_decay"
-
-
-def similarity(method: SimMethod, dist=None, x_data=None, threshold=0, top_k=10):
-    if method == SimMethod.cosine:
-        sparse_graph = cosine_similarity(x_data)
-    elif method == SimMethod.expo_threshold:
-        sigma = np.mean(dist)
-        sparse_graph = np.where(
-            np.exp(-(dist**2) / (2 * sigma**2)) > threshold,
-            np.exp(-(dist**2) / (2 * sigma**2)),
-            0,
-        )
-    elif method == SimMethod.expo_topk:
-        # Keep only top k strongest connections per node
-        k = top_k  # or another value
-        sigma = np.mean(dist)
-        sparse_graph = np.zeros_like(dist)
-        for i in range(len(dist)):
-            indices = np.argsort(dist[i])[:k]
-            sparse_graph[i, indices] = np.exp(-(dist[i, indices] ** 2) / (2 * sigma**2))
-    elif method == SimMethod.linear:
-        # Linear kernel
-        sparse_graph = 1 - (dist / np.max(dist))
-    elif method == SimMethod.polynomial_decay:
-        # Or polynomial decay
-        sigma = np.mean(dist)
-        sparse_graph = 1 / (1 + (dist / sigma) ** 2)
-
-    return sparse_graph
 
 
 # Prepares the training/test data for each cross validation fold and trains the GCN
 def train_fold(
-    train_ind, test_ind, val_ind, graph_feat, features, y, y_data, params, subject_IDs, test_with_other_classifiers:bool=False
+    train_ind, test_ind, val_ind, graph_feat, features, y, y_data, params, subject_IDs, 
+    similarity_support_type, test_with_other_classifiers:bool=False
 ):
     """
         train_ind       : indices of the training samples
@@ -93,14 +60,12 @@ def train_fold(
         fold_size   : number of test samples
     """
 
-    print(len(train_ind))
 
     # selection of a subset of data if running experiments with a subset of the training set
     labeled_ind = Reader.site_percentage(train_ind, params["num_training"], subject_IDs)
 
     # feature selection/dimensionality reduction step
-    x_data = Reader.feature_selection(features, y, labeled_ind, params["num_features"])
-
+    x_data = Reader.feature_selection(features, y, labeled_ind, params["num_features"], params["method_feature_selection"], )
     fold_size = len(test_ind)
 
     # Calculate all pairwise distances
@@ -113,19 +78,11 @@ def train_fold(
     sim_method = params["sim_method"]
     sim_threshold = params["sim_threshold"]
     sim_top_k = params["sim_top_k"]
-
-    sparse_graph = similarity(
-        method=SimMethod(sim_method),
-        dist=dist,
-        x_data=x_data,
-        threshold=sim_threshold,
-        top_k=sim_top_k,
-    )
-
-    final_graph = graph_feat * sparse_graph
+    
+    final_graph, sparse_graph = build_adjmat.get_adj_matrix(train_ind, graph_feat, features, y, params, subject_IDs, similarity_support_type)
 
     # Linear classifier
-    clf = RidgeClassifier()
+    clf = RidgeClassifier(alpha=500.0)
     clf.fit(x_data[train_ind, :], y[train_ind].ravel())
     # Compute the accuracy
     lin_acc = clf.score(x_data[test_ind, :], y[test_ind].ravel())
@@ -133,7 +90,6 @@ def train_fold(
     pred = clf.decision_function(x_data[test_ind, :])
     lin_auc = sklearn.metrics.roc_auc_score(y[test_ind] - 1, pred)
 
-    print("Linear Accuracy: " + str(lin_acc))
 
     # Other Classifiers
     if test_with_other_classifiers:
@@ -156,7 +112,6 @@ def train_fold(
             otherResults[f'{name}_acc'] = model_acc
             otherResults[f'{name}_auc'] = model_auc
     
-    # print("Y_LABEL BEFORE EVERYTHIN", np.unique(y_data, axis=0))
     # Classification with GCNs
     test_acc, test_auc = Train.run_training(
         final_graph,
@@ -168,15 +123,14 @@ def train_fold(
         params,
     )
 
-    print(test_acc)
 
     # return number of correctly classified samples instead of percentage
     test_acc = int(round(test_acc * len(test_ind)))
     lin_acc = int(round(lin_acc * len(test_ind)))
     if test_with_other_classifiers:
-        return test_acc, test_auc, lin_acc, lin_auc, fold_size, otherResults
+        return test_acc, test_auc, lin_acc, lin_auc, fold_size, final_graph, sparse_graph, otherResults
     else:
-        return test_acc, test_auc, lin_acc, lin_auc, fold_size
+        return test_acc, test_auc, lin_acc, lin_auc, fold_size, final_graph, sparse_graph
 
 
 
@@ -227,6 +181,13 @@ def main():
         "the feature selection step (default: 2000)",
     )
     parser.add_argument(
+        "--method_feature_selection",
+        default='RFE',
+        type=str,
+        help="(Default: RFE), PCA",
+    )
+    
+    parser.add_argument(
         "--num_training",
         default=1.0,
         type=float,
@@ -260,9 +221,15 @@ def main():
     )
     parser.add_argument(
         "--seed",
-        default=123,
+        default=1,
         type=int,
         help="Seed for random initialisation (default: 123)",
+    )
+    parser.add_argument(
+        "--seed_cv_fold",
+        default=34,
+        type=int,
+        help="Seed for K-fold initialization (default: 34)",
     )
     parser.add_argument(
         "--folds",
@@ -271,6 +238,12 @@ def main():
         help="For cross validation, specifies which fold will be "
         "used. All folds are used if set to 11 (default: 11)",
     )
+    parser.add_argument(
+        "--n_splits",
+        default=10,
+        type=int,
+        help="Number of splits if cross-validation chosen. (default: 10)",
+    )  
     parser.add_argument(
         "--save",
         default=1,
@@ -300,8 +273,8 @@ def main():
     )
     parser.add_argument(
         "--sim_threshold",
-        default=0,
-        type=int,
+        default=0.,
+        type=float,
         help="Threshold for graph similarity computation.",
     )
     parser.add_argument(
@@ -310,19 +283,33 @@ def main():
         type=int,
         help="Top_k for graph similarity computation.",
     )
-    parser.add_argument(
-        "--Random_connectivity",
-        default='No',
-        type=str,
-        help="Model with a random graph support with same density. Default: 'No' (options: 'Random', 'Worst')",
-    )
+
     parser.add_argument(
         "--test_with_other_classifiers",
         default=False,
         type=bool,
         help="Test with other linear classifiers if True. Default: False.",
     )
-
+    parser.add_argument(
+        "--phenotypic_graph_type",
+        default='classic',
+        type=str,
+        help="Parameters for choosing the type of phenotypic graph. (default: classic). "
+        "Options : 'random', 'G' (only Gender), 'As' (only Acquisition Site), 'worst' (worst case), 'all' (a fully connected graph)",
+    )
+    parser.add_argument(
+        "--similarity_support_type",
+        default='classic',
+        type=str,
+        help="Parameters for choosing the type of features' similarity graph (default: classic)."
+        "Options: 'random', 'worst', '1'"
+    )
+    parser.add_argument(
+        "--folder_name_for_saving",
+        default='test/',
+        type=str,
+        help="Useful for sensitivity analysis (default: '')."        
+    )
     args = parser.parse_args()
     start_time = time.time()
 
@@ -345,7 +332,7 @@ def main():
         args.depth
     )  # number of additional hidden layers in the GCN. Total number of hidden layers: 1+depth
     params["seed"] = args.seed  # seed for random initialisation
-
+    params["seed_cv_fold"] = args.seed_cv_fold
     # GCN Parameters
     params["num_features"] = (
         args.num_features
@@ -357,12 +344,22 @@ def main():
     params["sim_method"] = args.sim_method
     params["sim_threshold"] = args.sim_threshold
     params["sim_top_k"] = args.sim_top_k
+    # TO MAKE THE SWEEP RUNS THE FOLLOWING PARAMS NEEDED TO BE ADDED TO GCN PARAMS. TODO: make it cleaner.
+    params["phenotypic_graph_type"] =args.phenotypic_graph_type
+    params["similarity_support_type"] =args.similarity_support_type
+    params["folder_name_for_saving"] =args.folder_name_for_saving
+    params["folds"] = args.folds
+    params["n_splits"] = args.n_splits
+    params["method_feature_selection"] = args.method_feature_selection
     atlas = args.atlas  # atlas for network construction (node definition)
     connectivity = (
         args.connectivity
     )  # type of connectivity used for network construction
-    RandomConnectivityType = args.Random_connectivity
     test_with_other_classifiers = args.test_with_other_classifiers
+    phenotypic_graph_type = args.phenotypic_graph_type
+    similarity_support_type = args.similarity_support_type
+    folder_name_for_saving = args.folder_name_for_saving
+    epochs = args.epochs
     # Get class labels
     subject_IDs = Reader.get_ids()
     labels = Reader.get_subject_score(subject_IDs, score="DX_GROUP")
@@ -373,7 +370,7 @@ def main():
 
     num_classes = 2
     num_nodes = len(subject_IDs)
-
+    num_features = args.num_features
     # Initialise variables for class labels and acquisition sites
     y_data = np.zeros([num_nodes, num_classes])
     y = np.zeros([num_nodes, 1])
@@ -389,28 +386,24 @@ def main():
     features = Reader.get_networks(subject_IDs, kind=connectivity, atlas_name=atlas)
 
     # Compute population graph using gender and acquisition site
-    graph = Reader.create_affinity_graph_from_scores(["SEX", "SITE_ID"], subject_IDs)
-    # shuffle the graph depending if it is a random connectivity experience
-    if RandomConnectivityType == 'Random':
-        graph = Reader.random_affinity_graph_with_same_density(graph)
-    if RandomConnectivityType == 'Worst':
-        graph = Reader.create_worst_affinity_graph_from_scores(["SEX", "SITE_ID"], subject_IDs)
+    phenotypic_graph = build_adjmat.get_phenotypic_graph(phenotypic_graph_type, subject_IDs)
 
     # Folds for cross validation experiments
-    skf = StratifiedKFold(n_splits=10)
+    skf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed_cv_fold)
 
     if args.folds == 11:  # run cross validation on all folds
-        scores = Parallel(n_jobs=10)(
+        scores = Parallel(n_jobs=args.n_splits)(
             delayed(train_fold)(
                 train_ind,
                 test_ind,
                 test_ind,
-                graph,
+                phenotypic_graph,
                 features,
                 y,
                 y_data,
                 params,
                 subject_IDs,
+                similarity_support_type,
                 test_with_other_classifiers
             )
             for train_ind, test_ind in reversed(
@@ -418,16 +411,15 @@ def main():
             )
         )
 
-        print(scores)
-
         scores_acc = [x[0] for x in scores]
         scores_auc = [x[1] for x in scores]
         scores_lin = [x[2] for x in scores]
         scores_auc_lin = [x[3] for x in scores]
         fold_size = [x[4] for x in scores]
+        final_adj_matrices, feature_similarity_graph = scores[0][5], scores[0][6]
         if test_with_other_classifiers:
             scores_other_classifiers = {}
-            for k in scores[0][5].keys():
+            for k in scores[0][-1].keys():
                 scores_other_classifiers[k] = [x[5][k] for x in scores]
 
         print("overall linear accuracy %f" + str(np.sum(scores_lin) * 1.0 / num_nodes))
@@ -444,27 +436,29 @@ def main():
         val = test
 
         scores = train_fold(
-            train, test, val, graph, features, y, y_data, params, subject_IDs, test_with_other_classifiers
+            train, test, val, phenotypic_graph, features, y, y_data, params, subject_IDs, similarity_support_type, test_with_other_classifiers
         )
-        if not test_with_other_classifiers:
-            scores_acc, scores_auc, scores_lin, scores_auc_lin, fold_size = scores
-        else:
+        scores_acc, scores_auc, scores_lin, scores_auc_lin, fold_size, final_adj_matrices, feature_similarity_graph = scores[0:7]
+        if test_with_other_classifiers:
             scores_other_classifiers = {}
-            for k in scores[0][5].keys():
-                scores_other_classifiers[k] = scores[5][k]
+            for k in scores[0][-1].keys():
+                scores_other_classifiers[k] = scores[-1][k]
 
         print("overall linear accuracy %f" + str(np.sum(scores_lin) * 1.0 / fold_size))
         print("overall linear AUC %f" + str(np.mean(scores_auc_lin)))
         print("overall accuracy %f" + str(np.sum(scores_acc) * 1.0 / fold_size))
         print("overall AUC %f" + str(np.mean(scores_auc)))
-
+ 
     if args.save == 1:
-        result_name = f"ABIDE_classification_{args.model}_{args.depth}_{args.max_degree}_{args.sim_method}_RdGraph_{args.Random_connectivity}"
+        # folder_name_for_saving is useful for sensitivity analysis or sweep campaign - most of the time : folder_name_for_saving = ""
+        n_splits_in_filename = "_nbSpli_" + str(args.n_splits) if args.folds == 11 else ""
+        folder_path = f"results/{folder_name_for_saving}ABIDE_class_seed_{args.seed}{n_splits_in_filename}_seedF_{args.seed_cv_fold}_epoch_{epochs}_folds_{args.folds}_pheno_{phenotypic_graph_type}_simi_{similarity_support_type}_mod_{args.model}_D_{args.depth}_maxdeg_{args.max_degree}_nfeat_{num_features}"
         if args.sim_threshold > 0:
-            result_name += f"_{args.sim_threshold}"
+            folder_path += f"_{args.sim_threshold}"
         if args.sim_method == SimMethod.expo_topk.value:
-            result_name += f"_{args.sim_top_k}"
-            
+            folder_path += f"_{args.sim_top_k}"
+        folder_path += '/'
+        os.makedirs(os.path.dirname(folder_path), exist_ok=True)
         data = {
                 "lin": scores_lin,
                 "lin_auc": scores_auc_lin,
@@ -477,10 +471,16 @@ def main():
                 data[k] = v
                 
         sio.savemat(
-            "results/" + result_name + ".mat",
+            folder_path + "data.mat",
             data,
         )
-        np.save("results/" + f"graphConnectivity_{args.model}_{args.depth}_{args.max_degree}_{args.sim_method}_RdGraph_{args.Random_connectivity}.npy", graph)
+        
+        np.save(folder_path + "phen_W.npy", phenotypic_graph)
+        np.save(folder_path +  "adj_W.npy", final_adj_matrices)
+        np.save(folder_path +  "sim_W.npy", feature_similarity_graph)
+        plotting.plot_summary_adj_matrix_construction(plotting.build_dic_for_plot_summary_adj_matrix_construction(
+                                        phenotypic_graph, feature_similarity_graph, final_adj_matrices), 
+                                        saving_filename = folder_path + 'syth_adj_cons.png')
 
 
 if __name__ == "__main__":
