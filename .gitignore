@@ -4,3 +4,4 @@ parameter_sweep_results/
 __pycache__/
 gcn
 analysis
+figures
