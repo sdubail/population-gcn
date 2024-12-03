@@ -65,7 +65,7 @@ def plot_chebyshev_filters(adj, k, plot_file, learned_coeffs=None, num_points=10
         )
 
     ax1.set_xlabel("λ")
-    ax1.set_ylabel("|T_k(λ)|")
+    ax1.set_ylabel("T_k(λ)")
     ax1.set_title("Chebyshev Polynomial Basis")
     ax1.legend()
     ax1.grid(True, alpha=0.3)

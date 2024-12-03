@@ -101,14 +101,23 @@ def run_parameter_sweep(base_args=None):
     return sweep_metadata
 
 
-def analyze_results(results_dir="results", metadata=None):
+def analyze_results(results_dir="parameter_sweep_results", metadata=None):
     """
-    Analyze results from parameter sweep and create visualizations
+    Analyze results from parameter sweep and create visualizations focusing on
+    accuracy vs order and accuracy vs depth relationships
+    """
+    # Set the plotting parameters
+    rcParams = {
+        "font.size": 12,  # General font size
+        "axes.titlesize": 20,  # Title font size of the plot
+        "axes.labelsize": 18,  # Font size of x and y labels
+        "xtick.labelsize": 12,  # Font size of x tick labels
+        "ytick.labelsize": 14,  # Font size of y tick labels
+        "legend.fontsize": 12,  # Font size of legend text
+        "figure.titlesize": 20,  # Font size of the figure title
+    }
+    plt.rcParams.update(rcParams)
 
-    Args:
-        results_dir: Directory containing the .mat result files
-        metadata: Metadata about the parameter sweep
-    """
     results = []
 
     # Load all result files
@@ -127,7 +136,13 @@ def analyze_results(results_dir="results", metadata=None):
                     parts = [p for p in parts if p not in ["gcn", "cheby"]]
                     parts.insert(0, "gcn_cheby")
 
+                # Replace model names
                 model = parts[0]
+                if model == "gcn_cheby":
+                    model = "Chebyshev filters"
+                elif model == "gcn":
+                    model = "Linear filters"
+
                 depth = int(parts[1])
                 max_degree = int(parts[2])
 
@@ -139,7 +154,6 @@ def analyze_results(results_dir="results", metadata=None):
                         "model": model,
                         "depth": depth,
                         "max_degree": max_degree,
-                        # be careful 'acc' is not a percentage, need to divide by ~87 (batch size) and take mean
                         "accuracy": np.mean(data["acc"] / 87) * 100,
                         "auc": np.mean(data["auc"]),
                         "linear_acc": np.mean(data["lin"] / 87) * 100,
@@ -153,46 +167,39 @@ def analyze_results(results_dir="results", metadata=None):
     # Convert to DataFrame for easier analysis
     df = pd.DataFrame(results)
 
-    # Create analysis plots
-    plt.figure(figsize=(15, 10))
+    # Create analysis plots with vertical stacking
+    plt.figure(figsize=(12, 8))
 
-    # Plot 1: Model comparison
-    plt.subplot(2, 2, 1)
-    model_stats = df.groupby("model")["accuracy"].agg(["mean", "std"]).reset_index()
-    plt.bar(model_stats["model"], model_stats["mean"], yerr=model_stats["std"])
-    plt.title("Model Performance Comparison")
-    plt.ylabel("Accuracy (%)")
-    plt.xticks(rotation=45)
+    # # Plot 1: Depth vs Accuracy by Model
+    # plt.subplot(2, 1, 1)
+    # for model in df["model"].unique():
+    #     model_data = df[df["model"] == model]
+    #     # For linear filters, take the single max_degree value
+    #     if model != "Chebyshev filters":
+    #         plt.plot(model_data["depth"] + 1, model_data["accuracy"], "o-", label=model)
+    #     else:
+    #         # For Chebyshev filters, show the mean and std across max_degrees
+    #         depth_stats = (
+    #             model_data.groupby("depth")["accuracy"]
+    #             .agg(["mean", "std"])
+    #             .reset_index()
+    #         )
+    #         plt.errorbar(
+    #             depth_stats["depth"] + 1,
+    #             depth_stats["mean"],
+    #             yerr=depth_stats["std"],
+    #             fmt="o-",
+    #             label=model,
+    #         )
+    # plt.title("Network Depth vs Accuracy", pad=20)  # Added padding for the larger title
+    # plt.xlabel("Number of layers")
+    # plt.ylabel("Accuracy (%)")
+    # plt.legend()
+    # plt.grid(True, linestyle="--", alpha=0.7)
 
-    # Plot 2: Depth vs Accuracy by Model
-    plt.subplot(2, 2, 2)
-    for model in df["model"].unique():
-        model_data = df[df["model"] == model]
-        # For non-cheby models, take the single max_degree value
-        if model != "gcn_cheby":
-            plt.plot(model_data["depth"], model_data["accuracy"], "o-", label=model)
-        else:
-            # For gcn_cheby, show the mean and std across max_degrees
-            depth_stats = (
-                model_data.groupby("depth")["accuracy"]
-                .agg(["mean", "std"])
-                .reset_index()
-            )
-            plt.errorbar(
-                depth_stats["depth"],
-                depth_stats["mean"],
-                yerr=depth_stats["std"],
-                fmt="o-",
-                label=model,
-            )
-    plt.title("Depth vs Accuracy")
-    plt.xlabel("Depth")
-    plt.ylabel("Accuracy (%)")
-    plt.legend()
-
-    # Plot 3: max_degree vs Accuracy (only for gcn_cheby)
-    plt.subplot(2, 2, 3)
-    cheby_data = df[df["model"] == "gcn_cheby"]
+    # # Plot 2: max_degree vs Accuracy (only for Chebyshev filters)
+    # plt.subplot(2, 1, 2)
+    cheby_data = df[df["model"] == "Chebyshev filters"]
     if not cheby_data.empty:
         for depth in cheby_data["depth"].unique():
             depth_data = cheby_data[cheby_data["depth"] == depth]
@@ -202,35 +209,32 @@ def analyze_results(results_dir="results", metadata=None):
                 depth_data["max_degree"],
                 depth_data["accuracy"],
                 "o-",
-                label=f"depth={depth}",
+                label=f"layers={depth + 1}",
             )
-        plt.title("Chebyshev Degree vs Accuracy\n(gcn_cheby only)")
-        plt.xlabel("max_degree")
+        plt.title(
+            "Polynomial Order vs Accuracy\n(Chebyshev filters)", pad=20
+        )  # Added padding for the larger title
+        plt.xlabel("Polynomial order")
         plt.ylabel("Accuracy (%)")
         plt.legend()
+        plt.grid(True, linestyle="--", alpha=0.7)
     else:
         plt.text(
             0.5,
             0.5,
-            "No gcn_cheby data available",
+            "No Chebyshev filters data available",
             horizontalalignment="center",
             verticalalignment="center",
         )
 
-    # Plot 4: AUC comparison
-    plt.subplot(2, 2, 4)
-    for model in df["model"].unique():
-        model_data = df[df["model"] == model]
-        plt.scatter(model_data["accuracy"], model_data["auc"], label=model)
-    plt.xlabel("Accuracy (%)")
-    plt.ylabel("AUC")
-    plt.title("Accuracy vs AUC")
-    plt.legend()
-
-    plt.tight_layout()
+    plt.tight_layout(pad=3.0)  # Increased padding to accommodate larger fonts
 
     # Save plots
-    plt.savefig(os.path.join(results_dir, "parameter_sweep_analysis.png"))
+    plt.savefig(
+        os.path.join(results_dir, "parameter_sweep_analysis.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
 
     # Save numerical results
     summary_file = os.path.join(results_dir, "parameter_sweep_summary.csv")
@@ -272,7 +276,7 @@ def main():
 
     # Run parameter sweep
     print("Starting parameter sweep...")
-    sweep_metadata = run_parameter_sweep(base_args)
+    # sweep_metadata = run_parameter_sweep(base_args)
 
     # Analyze results
     print("\nAnalyzing results...")

@@ -17,6 +17,8 @@
 
 from __future__ import division, print_function
 
+import csv
+import os
 import random
 import time
 
@@ -232,6 +234,28 @@ def run_training(adj, features, labels, idx_train, idx_val, idx_test, params):
             "time=",
             "{:.5f}".format(time.time() - t + duration),
         )
+        # Store results
+        metrics = {
+            "epoch": epoch + 1,
+            "train_loss": outs[1],
+            "train_acc": outs[2],
+            "train_auc": train_auc,
+            "val_loss": cost,
+            "val_acc": acc,
+            "val_auc": auc,
+            "time": time.time() - t + duration,
+        }
+
+        csv_path = f"training_curve_{FLAGS.model}_{FLAGS.depth}_{FLAGS.max_degree}_{FLAGS.sim_method}.csv"
+        file_exists = os.path.isfile(csv_path)
+
+        with open(csv_path, mode="a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=metrics.keys())
+
+            if not file_exists:
+                writer.writeheader()
+
+            writer.writerow(metrics)
 
         if epoch > FLAGS.early_stopping and cost_val[-1] > np.mean(
             cost_val[-(FLAGS.early_stopping + 1) : -1]
