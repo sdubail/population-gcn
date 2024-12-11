@@ -1,3 +1,24 @@
+Ridge Strikes Back? A Sensitivity Analysis on Graphs Convolutions for Disease Prediction
+---------------------------------------------------------------------
+This code provides a python - Tensorflow implementation of graph convolutional networks (GCNs) for semi-supervised 
+disease prediction using population graphs, as described in: 
+
+Parisot, S., Ktena, S. I., Ferrante, E., Lee, M., Moreno, R. G., Glocker, B., & Rueckert, D. (2017). <br />
+[Spectral Graph Convolutions for Population-based Disease Prediction](https://arxiv.org/abs/1703.03020). <br />
+MICCAI 2017.
+
+We provide an updated version of this code for python 3.12 and tensorflow 2.0, with additional utilitaries for the spectral analysis of the convolutional filters, and analytics of the baselines used in the paper.
+
+To run the programme, you will need to install the implementation of graph convolutional networks (GCN) by Kipf et al, that we also modified for our study to make it compatible with 3.12 and tensorflow 2.0.
+We also implemented an environment to use Cayley polynomials for convolutional filters, introduced in “CayleyNets: Graph Convolutional Neural Networks with Complex Rational Spectral Filters”.
+
+This project is only compatible with our [forked GCN project](https://github.com/sdubail/gcn).
+
+
+
+
+Original readme below : 
+
 Graph CNNs for population graphs: classification of the ABIDE dataset
 ---------------------------------------------------------------------
 
